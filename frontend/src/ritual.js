@@ -25,6 +25,20 @@ export const CAPABILITY_LLM = 1;
 export const TRANSLATOR_ADDRESS = import.meta.env.VITE_TRANSLATOR_ADDRESS;
 
 // --- ABIs ---
+const translationTuple = {
+  type: "tuple",
+  components: [
+    { name: "user", type: "address" },
+    { name: "sourceText", type: "string" },
+    { name: "targetLang", type: "string" },
+    { name: "translatedText", type: "string" },
+    { name: "hasError", type: "bool" },
+    { name: "errorMessage", type: "string" },
+    { name: "autonomous", type: "bool" },
+    { name: "timestamp", type: "uint256" },
+  ],
+};
+
 export const translatorAbi = [
   {
     type: "function",
@@ -46,23 +60,57 @@ export const translatorAbi = [
   },
   {
     type: "function",
+    name: "startAgent",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "url", type: "string" },
+      { name: "targetLang", type: "string" },
+      { name: "everyBlocks", type: "uint32" },
+      { name: "runs", type: "uint32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "stopAgent",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "agentRunning",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "sourceUrl",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "string" }],
+  },
+  {
+    type: "function",
     name: "getTranslation",
     stateMutability: "view",
     inputs: [{ name: "id", type: "uint256" }],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "user", type: "address" },
-          { name: "sourceText", type: "string" },
-          { name: "targetLang", type: "string" },
-          { name: "translatedText", type: "string" },
-          { name: "hasError", type: "bool" },
-          { name: "errorMessage", type: "string" },
-          { name: "timestamp", type: "uint256" },
-        ],
-      },
-    ],
+    outputs: [translationTuple],
+  },
+  {
+    type: "function",
+    name: "getRecent",
+    stateMutability: "view",
+    inputs: [{ name: "n", type: "uint256" }],
+    outputs: [{ type: "tuple[]", components: translationTuple.components }],
   },
   {
     type: "function",
@@ -80,6 +128,7 @@ export const translatorAbi = [
       { name: "targetLang", type: "string", indexed: false },
       { name: "translatedText", type: "string", indexed: false },
       { name: "hasError", type: "bool", indexed: false },
+      { name: "autonomous", type: "bool", indexed: false },
     ],
   },
 ];

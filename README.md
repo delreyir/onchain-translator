@@ -1,16 +1,23 @@
-# 🌐 Onchain Translator — Ritual Chain
+# 🌐 Onchain Translator + Autonomous Agent — Ritual Chain
 
-Translate arbitrary text **fully on-chain** using Ritual Chain's LLM precompile
-(`0x0802`, model `zai-org/GLM-4.7-FP8`). No API keys, no oracles, no backend.
+Translate text **fully on-chain** using Ritual Chain's LLM precompile
+(`0x0802`, model `zai-org/GLM-4.7-FP8`) — and let the contract translate **by
+itself** as an autonomous on-chain agent.
 
-The contract builds the prompt, calls the TEE-verified LLM precompile, decodes
-the completion, and stores the translation on-chain — all in a single
-transaction.
+Two modes:
 
-> Why it's novel: the community dApp list is full of PFP generators, games,
-> quizzes and prediction markets. None is an on-chain translator built directly
-> on the LLM precompile with the conversation-history field left empty (so it
-> needs **no** GCS / storage credentials).
+1. **Manual** — `translate(executor, text, lang)`: anyone translates text on
+   demand. The model runs in a TEE, the result is bound to the request and
+   stored on-chain.
+2. **Agent** — `startAgent(url, lang, everyBlocks, runs)`: the contract uses the
+   enshrined **Scheduler** to wake itself up every N blocks, fetch fresh text
+   over **HTTP** (`0x0801`), translate it via the **LLM** (`0x0802`), and store
+   it on-chain. No server. No cron. The chain itself drives it.
+
+> This showcases three precompiles working together (Scheduler + HTTP + LLM) —
+> a contract that *reads the web, thinks, and acts on its own*, which is exactly
+> Ritual's autonomous-agent thesis. (Per-tx limit: one async call, so FETCH and
+> TRANSLATE run on alternating wakeups.)
 
 ---
 

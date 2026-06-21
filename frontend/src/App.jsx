@@ -49,6 +49,7 @@ export default function App() {
       <Marquee />
       <Features />
       <HowItWorks />
+      <AgentSection account={account} setAccount={setAccount} walletClient={walletClient} />
       <Languages />
       <Faq />
       <Footer />
@@ -113,6 +114,7 @@ function NavBar({ account, setAccount }) {
         <div className="nav-links">
           <a href="#why">Why</a>
           <a href="#how">How it works</a>
+          <a href="#agent">Agent</a>
           <a href="#langs">Languages</a>
           <a href="#faq">FAQ</a>
         </div>
@@ -485,6 +487,198 @@ function HowItWorks() {
             <p>{s.body}</p>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Autonomous Agent                                                    */
+/* ------------------------------------------------------------------ */
+
+function AgentSection({ account, setAccount, walletClient }) {
+  const [url, setUrl] = useState("https://api.adviceslip.com/advice");
+  const [lang, setLang] = useState("Arabic");
+  const [every, setEvery] = useState(40);
+  const [runs, setRuns] = useState(10);
+  const [running, setRunning] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feed, setFeed] = useState([]);
+  const [err, setErr] = useState("");
+
+  const configured =
+    TRANSLATOR_ADDRESS && /^0x[a-fA-F0-9]{40}$/.test(TRANSLATOR_ADDRESS);
+
+  async function refresh() {
+    if (!configured) return;
+    try {
+      const [isRunning, recent] = await Promise.all([
+        publicClient.readContract({
+          address: TRANSLATOR_ADDRESS,
+          abi: translatorAbi,
+          functionName: "agentRunning",
+        }),
+        publicClient.readContract({
+          address: TRANSLATOR_ADDRESS,
+          abi: translatorAbi,
+          functionName: "getRecent",
+          args: [12n],
+        }),
+      ]);
+      setRunning(isRunning);
+      setFeed(recent.filter((t) => t.autonomous));
+    } catch {
+      /* contract may not be deployed yet */
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 6000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function start() {
+    setErr("");
+    if (!account) return connectWallet(setAccount);
+    try {
+      setBusy(true);
+      await ensureChain();
+      const hash = await walletClient.writeContract({
+        account,
+        address: TRANSLATOR_ADDRESS,
+        abi: translatorAbi,
+        functionName: "startAgent",
+        args: [url, lang, Number(every), Number(runs)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refresh();
+    } catch (e) {
+      setErr(e.shortMessage || e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stop() {
+    setErr("");
+    try {
+      setBusy(true);
+      await ensureChain();
+      const hash = await walletClient.writeContract({
+        account,
+        address: TRANSLATOR_ADDRESS,
+        abi: translatorAbi,
+        functionName: "stopAgent",
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refresh();
+    } catch (e) {
+      setErr(e.shortMessage || e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section id="agent" className="section alt">
+      <h2 className="section-title">🤖 Autonomous Agent</h2>
+      <p className="section-sub">
+        Let the contract drive itself: it wakes up on the enshrined Scheduler,
+        fetches fresh text over HTTP, and translates it — no server, no cron.
+      </p>
+
+      <div className="agent-wrap">
+        <div className="agent-config card">
+          <div className="agent-status">
+            <span className={`status-dot ${running ? "on" : "off"}`} />
+            {running ? "Agent is running" : "Agent is idle"}
+          </div>
+
+          <label>Source URL</label>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://api.adviceslip.com/advice"
+          />
+
+          <div className="agent-row">
+            <div>
+              <label>Translate to</label>
+              <select value={lang} onChange={(e) => setLang(e.target.value)}>
+                {LANGUAGES.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label>Every (blocks)</label>
+              <input
+                type="number"
+                min="1"
+                value={every}
+                onChange={(e) => setEvery(e.target.value)}
+              />
+            </div>
+            <div>
+              <label>Runs</label>
+              <input
+                type="number"
+                min="1"
+                value={runs}
+                onChange={(e) => setRuns(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="agent-actions">
+            {running ? (
+              <button className="btn-ghost" onClick={stop} disabled={busy || !configured}>
+                {busy ? "…" : "Stop agent"}
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                onClick={start}
+                disabled={busy || !configured}
+              >
+                {busy ? "Starting…" : account ? "Start agent (owner)" : "Connect to start"}
+              </button>
+            )}
+          </div>
+          {err && <div className="banner error">{err}</div>}
+          <p className="agent-note">
+            Only the contract owner can start/stop. The agent pays its own fees
+            from the contract's RitualWallet balance.
+          </p>
+        </div>
+
+        <div className="agent-feed">
+          <div className="feed-head">
+            Live on-chain feed
+            <span className="feed-count">{feed.length}</span>
+          </div>
+          {feed.length === 0 ? (
+            <div className="feed-empty">
+              No autonomous translations yet. Start the agent and watch them
+              appear here, written by the chain itself.
+            </div>
+          ) : (
+            feed.map((t, i) => (
+              <div key={i} className="feed-item">
+                <div className="feed-lang">→ {t.targetLang}</div>
+                <div className="feed-translated">
+                  {t.hasError ? `⚠ ${t.errorMessage}` : t.translatedText}
+                </div>
+                <div className="feed-source">{t.sourceText.slice(0, 120)}</div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </section>
   );

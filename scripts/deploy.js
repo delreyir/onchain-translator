@@ -17,11 +17,11 @@ async function main() {
   const balance = await hre.ethers.provider.getBalance(deployer.address);
   console.log("Balance :", hre.ethers.formatEther(balance), "RITUAL");
 
-  const Factory = await hre.ethers.getContractFactory("OnchainTranslator");
+  const Factory = await hre.ethers.getContractFactory("RitualTranslatorAgent");
   const translator = await Factory.deploy();
   await translator.waitForDeployment();
   const addr = await translator.getAddress();
-  console.log("OnchainTranslator deployed at:", addr);
+  console.log("RitualTranslatorAgent deployed at:", addr);
 
   const fund = process.env.FUND_RIT ?? "0.5";
   if (fund !== "0") {
