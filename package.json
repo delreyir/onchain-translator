@@ -1,0 +1,18 @@
+{
+  "name": "onchain-translator-contracts",
+  "version": "1.0.0",
+  "description": "On-chain text translator on Ritual Chain using the LLM precompile (0x0802)",
+  "license": "MIT",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network ritual"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "ethers": "^6.13.2",
+    "hardhat": "^2.22.10"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
