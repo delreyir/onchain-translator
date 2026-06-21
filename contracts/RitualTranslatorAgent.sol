@@ -47,15 +47,15 @@ interface ITEEServiceRegistry {
 ///
 ///  Two modes, both fully on-chain:
 ///
-///  1. MANUAL  — `translate(executor, text, lang)` lets any user translate
+///  1. MANUAL: `translate(executor, text, lang)` lets any user translate
 ///     text on demand via the LLM precompile (0x0802).
 ///
-///  2. AGENT   — the contract becomes an autonomous agent. The owner calls
+///  2. AGENT: the contract becomes an autonomous agent. The owner calls
 ///     `startAgent(...)`, which uses the enshrined Scheduler (0x56e7…) to wake
 ///     the contract up every N blocks with NO server or cron. On each wakeup
 ///     the agent alternates between two phases:
-///        • FETCH     — pull fresh text from a real Web2 URL (HTTP precompile)
-///        • TRANSLATE — translate that text into the target language (LLM)
+///        - FETCH: pull fresh text from a real Web2 URL (HTTP precompile)
+///        - TRANSLATE: translate that text into the target language (LLM)
 ///     and stores every result on-chain. The agent lives as long as it has
 ///     RitualWallet funds. This is exactly Ritual's "contract that thinks,
 ///     reads the web, and acts on its own" thesis.

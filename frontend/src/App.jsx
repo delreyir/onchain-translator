@@ -138,7 +138,7 @@ function Hero() {
     <header id="top" className="hero">
       <div className="hero-grid-bg" />
       <div className="container">
-        <div className="counter mono">00 / 06 — ritual · chain 1979</div>
+        <div className="counter mono">00 / 06 · ritual · chain 1979</div>
         <h1 className="display">
           Translate anything
           <br />
@@ -146,7 +146,7 @@ function Hero() {
         </h1>
         <p className="lede">
           A smart contract that thinks. Text is translated by an open-weight LLM
-          running inside a TEE — verified, bound to your request, and stored
+          running inside a TEE, verified, bound to your request, and stored
           on-chain. No API keys. No oracles. No backend.
         </p>
         <div className="hero-cta">
@@ -282,7 +282,7 @@ function Translate({ account, setAccount, walletClient }) {
         <SectionHead n="01" kicker="Try it" titleA="Translate" titleB="on demand" />
         {!configured() && (
           <div className="note warn mono">
-            demo mode — set VITE_TRANSLATOR_ADDRESS in frontend/.env after deploy
+            demo mode: set VITE_TRANSLATOR_ADDRESS in frontend/.env after deploy
           </div>
         )}
         <div className="terminal">
@@ -372,38 +372,38 @@ function statusText(s) {
 function HowItWorks() {
   const steps = [
     {
-      n: "02",
+      n: "01",
       a: "Build the",
       b: "prompt",
       desc: "The contract assembles an OpenAI-style message array on-chain and JSON-escapes your input. No off-chain prep.",
       code: '[{"role":"system",…},{"role":"user","content":"…"}]',
     },
     {
-      n: "03",
+      n: "02",
       a: "Encode the",
       b: "request",
       desc: "30-field LLM request is ABI-encoded with convoHistory left empty, then sent to the precompile in one call.",
       code: "LLM_PRECOMPILE.call(input) // 0x0802",
     },
     {
-      n: "04",
+      n: "03",
       a: "TEE runs",
       b: "inference",
       desc: "A registered executor runs zai-org/GLM-4.7-FP8 inside an enclave and hardware-attests the completion.",
-      code: "executor → enclave → attested output",
+      code: "executor to enclave to attested output",
     },
     {
-      n: "05",
+      n: "04",
       a: "Result",
       b: "settles",
-      desc: "The chain re-executes your tx with the result injected; the contract decodes and stores it — same transaction.",
+      desc: "The chain re-executes your tx with the result injected; the contract decodes and stores it in the same transaction.",
       code: "abi.decode(actualOutput,(bool,bytes,…))",
     },
   ];
   return (
     <section id="how" className="block alt">
       <div className="container">
-        <SectionHead n="—" kicker="How it works" titleA="One transaction," titleB="four steps" />
+        <SectionHead n="02" kicker="How it works" titleA="One transaction," titleB="four steps" />
         <div className="steps">
           {steps.map((s) => (
             <div key={s.n} className="step">
@@ -511,13 +511,13 @@ function AgentSection({ account, setAccount, walletClient }) {
     <section id="agent" className="block">
       <div className="container">
         <SectionHead
-          n="06"
+          n="03"
           kicker="Autonomous agent"
           titleA="Let the contract"
           titleB="run itself"
         />
         <p className="block-lede">
-          Powered by the enshrined Scheduler — the contract wakes itself up,
+          Powered by the enshrined Scheduler. The contract wakes itself up,
           fetches fresh text over HTTP, and translates it. No server. No cron.
           Three precompiles working together.
         </p>
@@ -580,7 +580,7 @@ function AgentSection({ account, setAccount, walletClient }) {
             {feed.length === 0 ? (
               <div className="feed-empty">
                 No autonomous translations yet. Start the agent and watch entries
-                appear here — written by the chain itself.
+                appear here, written by the chain itself.
               </div>
             ) : (
               feed.map((t, i) => (
@@ -606,7 +606,7 @@ function Why() {
   const cards = [
     {
       t: "Verifiable, not trusted",
-      d: "The model runs in a TEE. The executor's attestation is on-chain and bound to your request — no operator can fabricate the result.",
+      d: "The model runs in a TEE. The executor's attestation is on-chain and bound to your request, so no operator can fabricate the result.",
     },
     {
       t: "Lives on-chain",
@@ -624,7 +624,7 @@ function Why() {
   return (
     <section className="block alt">
       <div className="container">
-        <SectionHead n="—" kicker="Why it's different" titleA="Not a wrapper." titleB="A contract that thinks." />
+        <SectionHead n="04" kicker="Why it's different" titleA="Not a wrapper." titleB="A contract that thinks." />
         <div className="why-grid">
           {cards.map((c) => (
             <div key={c.t} className="why-card">
@@ -652,7 +652,7 @@ function ChainReference() {
   return (
     <section id="chain" className="block">
       <div className="container">
-        <SectionHead n="—" kicker="Chain reference" titleA="Built on" titleB="Ritual" />
+        <SectionHead n="05" kicker="Chain reference" titleA="Built on" titleB="Ritual" />
         <div className="chain-grid">
           <div className="chain-col">
             <div className="chain-h mono">chain</div>
@@ -728,7 +728,7 @@ function Faq() {
   return (
     <section id="faq" className="block alt">
       <div className="container">
-        <SectionHead n="—" kicker="FAQ" titleA="Good to" titleB="know" />
+        <SectionHead n="06" kicker="FAQ" titleA="Good to" titleB="know" />
         <div className="faq">
           {items.map((it, i) => (
             <div
