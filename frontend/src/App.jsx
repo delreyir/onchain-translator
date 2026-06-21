@@ -22,6 +22,8 @@ const publicClient = createPublicClient({
   transport: http(),
 });
 
+const GITHUB = "https://github.com/delreyir/onchain-translator";
+
 export default function App() {
   const [account, setAccount] = useState(null);
 
@@ -45,21 +47,19 @@ export default function App() {
   return (
     <div className="page">
       <NavBar account={account} setAccount={setAccount} />
-      <Hero account={account} setAccount={setAccount} walletClient={walletClient} />
-      <Marquee />
-      <Features />
+      <Hero />
+      <Translate account={account} setAccount={setAccount} walletClient={walletClient} />
       <HowItWorks />
       <AgentSection account={account} setAccount={setAccount} walletClient={walletClient} />
-      <Languages />
+      <Why />
+      <ChainReference />
       <Faq />
       <Footer />
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Wallet helpers                                                      */
-/* ------------------------------------------------------------------ */
+/* ============================ wallet helpers ============================ */
 
 async function ensureChain() {
   const hexId = "0x" + ritualChain.id.toString(16);
@@ -82,9 +82,7 @@ async function ensureChain() {
           },
         ],
       });
-    } else {
-      throw e;
-    }
+    } else throw e;
   }
 }
 
@@ -93,37 +91,38 @@ async function connectWallet(setAccount) {
     alert("No EVM wallet found. Install MetaMask.");
     return;
   }
-  const [acc] = await window.ethereum.request({
-    method: "eth_requestAccounts",
-  });
+  const [acc] = await window.ethereum.request({ method: "eth_requestAccounts" });
   await ensureChain();
   setAccount(acc);
 }
 
-/* ------------------------------------------------------------------ */
-/* NavBar                                                              */
-/* ------------------------------------------------------------------ */
+const configured = () =>
+  TRANSLATOR_ADDRESS && /^0x[a-fA-F0-9]{40}$/.test(TRANSLATOR_ADDRESS);
+
+/* ============================ NavBar ============================ */
 
 function NavBar({ account, setAccount }) {
   return (
     <nav className="nav">
       <div className="nav-inner">
-        <div className="brand">
-          <span className="brand-glyph">◇</span> Onchain Translator
-        </div>
+        <a href="#top" className="brand">
+          <span className="brand-glyph">◇</span> onchain-translator
+        </a>
         <div className="nav-links">
-          <a href="#why">Why</a>
+          <a href="#try">Try it</a>
           <a href="#how">How it works</a>
           <a href="#agent">Agent</a>
-          <a href="#langs">Languages</a>
-          <a href="#faq">FAQ</a>
+          <a href="#chain">Chain</a>
+          <a href={GITHUB} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
         </div>
         {account ? (
-          <span className="pill">
+          <span className="mono pill">
             {account.slice(0, 6)}…{account.slice(-4)}
           </span>
         ) : (
-          <button className="btn-sm" onClick={() => connectWallet(setAccount)}>
+          <button className="btn outline sm" onClick={() => connectWallet(setAccount)}>
             Connect
           </button>
         )}
@@ -132,11 +131,41 @@ function NavBar({ account, setAccount }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Hero + live translate widget                                        */
-/* ------------------------------------------------------------------ */
+/* ============================ Hero ============================ */
 
-function Hero({ account, setAccount, walletClient }) {
+function Hero() {
+  return (
+    <header id="top" className="hero">
+      <div className="hero-grid-bg" />
+      <div className="container">
+        <div className="counter mono">00 / 06 — ritual · chain 1979</div>
+        <h1 className="display">
+          Translate anything
+          <br />
+          <span className="accent">fully on-chain.</span>
+        </h1>
+        <p className="lede">
+          A smart contract that thinks. Text is translated by an open-weight LLM
+          running inside a TEE — verified, bound to your request, and stored
+          on-chain. No API keys. No oracles. No backend.
+        </p>
+        <div className="hero-cta">
+          <a href="#try" className="btn primary">
+            Try it ↓
+          </a>
+          <a href={GITHUB} target="_blank" rel="noreferrer" className="btn outline">
+            View source ↗
+          </a>
+        </div>
+        <div className="scroll-hint mono">scroll</div>
+      </div>
+    </header>
+  );
+}
+
+/* ============================ Translate (01) ============================ */
+
+function Translate({ account, setAccount, walletClient }) {
   const [text, setText] = useState("");
   const [lang, setLang] = useState("Arabic");
   const [status, setStatus] = useState("idle");
@@ -144,15 +173,9 @@ function Hero({ account, setAccount, walletClient }) {
   const [error, setError] = useState("");
   const [txHash, setTxHash] = useState("");
 
-  const configured =
-    TRANSLATOR_ADDRESS && /^0x[a-fA-F0-9]{40}$/.test(TRANSLATOR_ADDRESS);
-
-  const busy = [
-    "selecting-executor",
-    "submitting",
-    "inferring",
-    "depositing",
-  ].includes(status);
+  const busy = ["selecting", "submitting", "inferring", "depositing"].includes(
+    status
+  );
 
   async function fetchExecutor() {
     const services = await publicClient.readContract({
@@ -181,7 +204,7 @@ function Hero({ account, setAccount, walletClient }) {
       setStatus("depositing");
       await publicClient.waitForTransactionReceipt({ hash });
       setStatus("idle");
-      alert("Deposited 0.5 RITUAL to the contract's RitualWallet balance.");
+      alert("Deposited 0.5 RITUAL into the contract's RitualWallet balance.");
     } catch (e) {
       setError(e.shortMessage || e.message);
       setStatus("idle");
@@ -194,12 +217,10 @@ function Hero({ account, setAccount, walletClient }) {
     setTxHash("");
     if (!account) return setError("Connect your wallet first.");
     if (!text.trim()) return setError("Enter some text to translate.");
-
     try {
       await ensureChain();
-      setStatus("selecting-executor");
+      setStatus("selecting");
       const executor = await fetchExecutor();
-
       setStatus("submitting");
       const hash = await walletClient.writeContract({
         account,
@@ -210,7 +231,6 @@ function Hero({ account, setAccount, walletClient }) {
         gas: 5_000_000n,
       });
       setTxHash(hash);
-
       setStatus("inferring");
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
@@ -220,20 +240,19 @@ function Hero({ account, setAccount, walletClient }) {
         if (log.address.toLowerCase() !== TRANSLATOR_ADDRESS.toLowerCase())
           continue;
         try {
-          const decoded = decodeEventLog({
+          const d = decodeEventLog({
             abi: translatorAbi,
             data: log.data,
             topics: log.topics,
           });
-          if (decoded.eventName === "TranslationCompleted") {
-            translated = decoded.args.translatedText;
-            hadError = decoded.args.hasError;
+          if (d.eventName === "TranslationCompleted") {
+            translated = d.args.translatedText;
+            hadError = d.args.hasError;
           }
         } catch {
-          /* not our event */
+          /* not ours */
         }
       }
-
       if (hadError || !translated) {
         const count = await publicClient.readContract({
           address: TRANSLATOR_ADDRESS,
@@ -249,7 +268,6 @@ function Hero({ account, setAccount, walletClient }) {
         if (t.hasError) throw new Error(t.errorMessage || "LLM error");
         translated = t.translatedText;
       }
-
       setResult(translated);
       setStatus("done");
     } catch (e) {
@@ -259,242 +277,153 @@ function Hero({ account, setAccount, walletClient }) {
   }
 
   return (
-    <header className="hero">
-      <div className="hero-bg" />
-      <div className="hero-inner">
-        <div className="badge">⚡ Live on Ritual Chain · id 1979</div>
-        <h1>
-          Translate any text
-          <br />
-          <span className="grad">fully on-chain.</span>
-        </h1>
-        <p className="lede">
-          Powered by Ritual's enshrined LLM precompile{" "}
-          <code>0x0802</code>. The model runs inside a TEE, the result is
-          cryptographically bound to your request, and every translation is
-          stored on-chain. No API keys. No oracles. No backend.
-        </p>
-
-        <div className="widget">
-          {!configured && (
-            <div className="banner warn">
-              Demo mode — set <code>VITE_TRANSLATOR_ADDRESS</code> in{" "}
-              <code>frontend/.env</code> after deploying to enable live
-              translations.
-            </div>
-          )}
-
-          <div className="widget-grid">
-            <div className="field">
-              <label>Source text</label>
-              <textarea
-                rows={6}
-                placeholder="Type something to translate…"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label>Translation {result && `· ${lang}`}</label>
-              <div className="output">
-                {result ? (
-                  <p>{result}</p>
-                ) : (
-                  <span className="placeholder">
-                    The on-chain translation appears here.
-                  </span>
-                )}
+    <section id="try" className="block">
+      <div className="container">
+        <SectionHead n="01" kicker="Try it" titleA="Translate" titleB="on demand" />
+        {!configured() && (
+          <div className="note warn mono">
+            demo mode — set VITE_TRANSLATOR_ADDRESS in frontend/.env after deploy
+          </div>
+        )}
+        <div className="terminal">
+          <div className="terminal-bar mono">
+            <span className="tdot" />
+            <span className="tdot" />
+            <span className="tdot" />
+            <span className="tpath">translate.sol</span>
+          </div>
+          <div className="terminal-body">
+            <div className="io">
+              <div>
+                <div className="io-label mono">input</div>
+                <textarea
+                  rows={5}
+                  placeholder="Type something to translate…"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                />
+              </div>
+              <div>
+                <div className="io-label mono">output{result && ` · ${lang}`}</div>
+                <div className="io-out">
+                  {result ? <p>{result}</p> : <span className="ph">→ on-chain translation</span>}
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="widget-actions">
-            <select value={lang} onChange={(e) => setLang(e.target.value)}>
-              {LANGUAGES.map((l) => (
-                <option key={l} value={l}>
-                  → {l}
-                </option>
-              ))}
-            </select>
-
-            {account ? (
-              <>
-                <button
-                  className="btn-ghost"
-                  onClick={deposit}
-                  disabled={busy || !configured}
-                >
-                  Fund 0.5 RIT
+            <div className="io-actions">
+              <select value={lang} onChange={(e) => setLang(e.target.value)}>
+                {LANGUAGES.map((l) => (
+                  <option key={l} value={l}>
+                    → {l}
+                  </option>
+                ))}
+              </select>
+              {account ? (
+                <>
+                  <button className="btn outline" onClick={deposit} disabled={busy || !configured()}>
+                    Fund 0.5 RIT
+                  </button>
+                  <button className="btn primary" onClick={translate} disabled={busy || !configured()}>
+                    {busy ? "working…" : "Translate on-chain"}
+                  </button>
+                </>
+              ) : (
+                <button className="btn primary" onClick={() => connectWallet(setAccount)}>
+                  Connect wallet
                 </button>
-                <button
-                  className="btn-primary"
-                  onClick={translate}
-                  disabled={busy || !configured}
-                >
-                  {busy ? "Working…" : "Translate on-chain"}
-                </button>
-              </>
-            ) : (
-              <button
-                className="btn-primary"
-                onClick={() => connectWallet(setAccount)}
-              >
-                Connect wallet to start
-              </button>
-            )}
-          </div>
-
-          {status !== "idle" && (
-            <div className="statusbar">
-              <span className="dot" />
-              <StatusLine status={status} />
-              {txHash && (
-                <a
-                  href={`${ritualChain.blockExplorers.default.url}/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  view tx ↗
-                </a>
               )}
             </div>
-          )}
-          {error && <div className="banner error">{error}</div>}
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function StatusLine({ status }) {
-  const map = {
-    "selecting-executor": "Selecting a TEE executor from the registry…",
-    submitting: "Submitting to the LLM precompile…",
-    inferring: "Running inference inside the TEE (10–40s)…",
-    depositing: "Depositing fees into RitualWallet…",
-    done: "Done ✓",
-  };
-  return <span>{map[status] || status}</span>;
-}
-
-/* ------------------------------------------------------------------ */
-/* Marquee                                                             */
-/* ------------------------------------------------------------------ */
-
-function Marquee() {
-  const items = [
-    "TEE-verified inference",
-    "zai-org/GLM-4.7-FP8",
-    "64K context",
-    "On-chain storage",
-    "No API keys",
-    "Stateless · no backend",
-    "EVM · chain 1979",
-  ];
-  const row = [...items, ...items];
-  return (
-    <div className="marquee">
-      <div className="marquee-track">
-        {row.map((t, i) => (
-          <span key={i} className="marquee-item">
-            {t} <em>◇</em>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Features                                                            */
-/* ------------------------------------------------------------------ */
-
-function Features() {
-  const cards = [
-    {
-      icon: "🛡️",
-      title: "Verifiable, not trusted",
-      body: "The model runs in a Trusted Execution Environment. The executor's attestation is registered on-chain and the output is bound to your exact request — an operator cannot fabricate or tamper with the result.",
-    },
-    {
-      icon: "⛓️",
-      title: "Translations live on-chain",
-      body: "Every translation is decoded and persisted in contract storage and emitted as an event. Anyone can read, index, or build on the full history — it's permanent and public.",
-    },
-    {
-      icon: "🔌",
-      title: "Zero infrastructure",
-      body: "No translation API, no server, no keys. The conversation-history field is left empty, so the contract talks to the LLM precompile directly with nothing to host or leak.",
-    },
-  ];
-  return (
-    <section id="why" className="section">
-      <h2 className="section-title">Why Onchain Translator?</h2>
-      <p className="section-sub">
-        Not a wrapper around a Web2 API — a smart contract that thinks.
-      </p>
-      <div className="cards">
-        {cards.map((c) => (
-          <div key={c.title} className="feature-card">
-            <div className="feature-icon">{c.icon}</div>
-            <h3>{c.title}</h3>
-            <p>{c.body}</p>
+            {status !== "idle" && (
+              <div className="statusline mono">
+                <span className="blink">▍</span> {statusText(status)}
+                {txHash && (
+                  <a
+                    href={`${ritualChain.blockExplorers.default.url}/tx/${txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    tx ↗
+                  </a>
+                )}
+              </div>
+            )}
+            {error && <div className="note error mono">{error}</div>}
           </div>
-        ))}
+        </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* How it works                                                        */
-/* ------------------------------------------------------------------ */
+function statusText(s) {
+  return (
+    {
+      selecting: "selecting TEE executor…",
+      submitting: "submitting to LLM precompile 0x0802…",
+      inferring: "running inference inside TEE (10–40s)…",
+      depositing: "depositing into RitualWallet…",
+      done: "done.",
+    }[s] || s
+  );
+}
+
+/* ============================ How it works ============================ */
 
 function HowItWorks() {
   const steps = [
     {
-      n: "01",
-      title: "You submit",
-      body: "Call translate(executor, text, lang). The contract builds an OpenAI-style prompt on-chain and JSON-escapes your input.",
-    },
-    {
       n: "02",
-      title: "Chain encodes",
-      body: "The 30-field LLM request is ABI-encoded with convoHistory left empty, then sent to precompile 0x0802.",
+      a: "Build the",
+      b: "prompt",
+      desc: "The contract assembles an OpenAI-style message array on-chain and JSON-escapes your input. No off-chain prep.",
+      code: '[{"role":"system",…},{"role":"user","content":"…"}]',
     },
     {
       n: "03",
-      title: "TEE infers",
-      body: "A registered executor runs GLM-4.7-FP8 inside an enclave and produces a hardware-attested completion.",
+      a: "Encode the",
+      b: "request",
+      desc: "30-field LLM request is ABI-encoded with convoHistory left empty, then sent to the precompile in one call.",
+      code: "LLM_PRECOMPILE.call(input) // 0x0802",
     },
     {
       n: "04",
-      title: "Result settles",
-      body: "The chain re-executes your tx with the result injected, the contract decodes it and stores the translation — same transaction.",
+      a: "TEE runs",
+      b: "inference",
+      desc: "A registered executor runs zai-org/GLM-4.7-FP8 inside an enclave and hardware-attests the completion.",
+      code: "executor → enclave → attested output",
+    },
+    {
+      n: "05",
+      a: "Result",
+      b: "settles",
+      desc: "The chain re-executes your tx with the result injected; the contract decodes and stores it — same transaction.",
+      code: "abi.decode(actualOutput,(bool,bytes,…))",
     },
   ];
   return (
-    <section id="how" className="section alt">
-      <h2 className="section-title">How it works</h2>
-      <p className="section-sub">
-        One transaction, four protocol-level steps.
-      </p>
-      <div className="steps">
-        {steps.map((s) => (
-          <div key={s.n} className="step">
-            <span className="step-n">{s.n}</span>
-            <h3>{s.title}</h3>
-            <p>{s.body}</p>
-          </div>
-        ))}
+    <section id="how" className="block alt">
+      <div className="container">
+        <SectionHead n="—" kicker="How it works" titleA="One transaction," titleB="four steps" />
+        <div className="steps">
+          {steps.map((s) => (
+            <div key={s.n} className="step">
+              <div className="step-n mono">{s.n}</div>
+              <h3 className="display">
+                {s.a}
+                <br />
+                {s.b}
+              </h3>
+              <p>{s.desc}</p>
+              <div className="code-line mono">{s.code}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Autonomous Agent                                                    */
-/* ------------------------------------------------------------------ */
+/* ============================ Agent (06) ============================ */
 
 function AgentSection({ account, setAccount, walletClient }) {
   const [url, setUrl] = useState("https://api.adviceslip.com/advice");
@@ -506,11 +435,8 @@ function AgentSection({ account, setAccount, walletClient }) {
   const [feed, setFeed] = useState([]);
   const [err, setErr] = useState("");
 
-  const configured =
-    TRANSLATOR_ADDRESS && /^0x[a-fA-F0-9]{40}$/.test(TRANSLATOR_ADDRESS);
-
   async function refresh() {
-    if (!configured) return;
+    if (!configured()) return;
     try {
       const [isRunning, recent] = await Promise.all([
         publicClient.readContract({
@@ -528,7 +454,7 @@ function AgentSection({ account, setAccount, walletClient }) {
       setRunning(isRunning);
       setFeed(recent.filter((t) => t.autonomous));
     } catch {
-      /* contract may not be deployed yet */
+      /* not deployed yet */
     }
   }
 
@@ -582,204 +508,289 @@ function AgentSection({ account, setAccount, walletClient }) {
   }
 
   return (
-    <section id="agent" className="section alt">
-      <h2 className="section-title">🤖 Autonomous Agent</h2>
-      <p className="section-sub">
-        Let the contract drive itself: it wakes up on the enshrined Scheduler,
-        fetches fresh text over HTTP, and translates it — no server, no cron.
-      </p>
+    <section id="agent" className="block">
+      <div className="container">
+        <SectionHead
+          n="06"
+          kicker="Autonomous agent"
+          titleA="Let the contract"
+          titleB="run itself"
+        />
+        <p className="block-lede">
+          Powered by the enshrined Scheduler — the contract wakes itself up,
+          fetches fresh text over HTTP, and translates it. No server. No cron.
+          Three precompiles working together.
+        </p>
 
-      <div className="agent-wrap">
-        <div className="agent-config card">
-          <div className="agent-status">
-            <span className={`status-dot ${running ? "on" : "off"}`} />
-            {running ? "Agent is running" : "Agent is idle"}
-          </div>
-
-          <label>Source URL</label>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://api.adviceslip.com/advice"
-          />
-
-          <div className="agent-row">
-            <div>
-              <label>Translate to</label>
-              <select value={lang} onChange={(e) => setLang(e.target.value)}>
-                {LANGUAGES.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
+        <div className="agent-wrap">
+          <div className="agent-config">
+            <div className="agent-status mono">
+              <span className={`sdot ${running ? "on" : "off"}`} />
+              {running ? "agent: running" : "agent: idle"}
             </div>
-            <div>
-              <label>Every (blocks)</label>
-              <input
-                type="number"
-                min="1"
-                value={every}
-                onChange={(e) => setEvery(e.target.value)}
-              />
+            <label className="io-label mono">source url</label>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} />
+            <div className="agent-row">
+              <div>
+                <label className="io-label mono">to</label>
+                <select value={lang} onChange={(e) => setLang(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="io-label mono">every (blocks)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={every}
+                  onChange={(e) => setEvery(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="io-label mono">runs</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={runs}
+                  onChange={(e) => setRuns(e.target.value)}
+                />
+              </div>
             </div>
-            <div>
-              <label>Runs</label>
-              <input
-                type="number"
-                min="1"
-                value={runs}
-                onChange={(e) => setRuns(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="agent-actions">
             {running ? (
-              <button className="btn-ghost" onClick={stop} disabled={busy || !configured}>
+              <button className="btn outline" onClick={stop} disabled={busy || !configured()}>
                 {busy ? "…" : "Stop agent"}
               </button>
             ) : (
-              <button
-                className="btn-primary"
-                onClick={start}
-                disabled={busy || !configured}
-              >
-                {busy ? "Starting…" : account ? "Start agent (owner)" : "Connect to start"}
+              <button className="btn primary" onClick={start} disabled={busy || !configured()}>
+                {busy ? "starting…" : account ? "Start agent (owner)" : "Connect to start"}
               </button>
             )}
+            {err && <div className="note error mono">{err}</div>}
+            <p className="fineprint mono">
+              owner-only · agent pays its own fees from RitualWallet
+            </p>
           </div>
-          {err && <div className="banner error">{err}</div>}
-          <p className="agent-note">
-            Only the contract owner can start/stop. The agent pays its own fees
-            from the contract's RitualWallet balance.
-          </p>
-        </div>
 
-        <div className="agent-feed">
-          <div className="feed-head">
-            Live on-chain feed
-            <span className="feed-count">{feed.length}</span>
-          </div>
-          {feed.length === 0 ? (
-            <div className="feed-empty">
-              No autonomous translations yet. Start the agent and watch them
-              appear here, written by the chain itself.
+          <div className="agent-feed">
+            <div className="feed-head mono">
+              live on-chain feed<span className="feed-count">{feed.length}</span>
             </div>
-          ) : (
-            feed.map((t, i) => (
-              <div key={i} className="feed-item">
-                <div className="feed-lang">→ {t.targetLang}</div>
-                <div className="feed-translated">
-                  {t.hasError ? `⚠ ${t.errorMessage}` : t.translatedText}
-                </div>
-                <div className="feed-source">{t.sourceText.slice(0, 120)}</div>
+            {feed.length === 0 ? (
+              <div className="feed-empty">
+                No autonomous translations yet. Start the agent and watch entries
+                appear here — written by the chain itself.
               </div>
-            ))
-          )}
+            ) : (
+              feed.map((t, i) => (
+                <div key={i} className="feed-item">
+                  <div className="feed-lang mono">→ {t.targetLang}</div>
+                  <div className="feed-translated">
+                    {t.hasError ? `⚠ ${t.errorMessage}` : t.translatedText}
+                  </div>
+                  <div className="feed-source mono">{t.sourceText.slice(0, 110)}</div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Languages                                                           */
-/* ------------------------------------------------------------------ */
+/* ============================ Why ============================ */
 
-function Languages() {
+function Why() {
+  const cards = [
+    {
+      t: "Verifiable, not trusted",
+      d: "The model runs in a TEE. The executor's attestation is on-chain and bound to your request — no operator can fabricate the result.",
+    },
+    {
+      t: "Lives on-chain",
+      d: "Every translation is decoded, stored in contract storage, and emitted as an event. Permanent, public, and indexable.",
+    },
+    {
+      t: "Zero infrastructure",
+      d: "No translation API, no server, no keys. convoHistory is empty, so the contract talks to the precompile directly.",
+    },
+    {
+      t: "Autonomous",
+      d: "Scheduler + HTTP + LLM let the contract drive itself. It reads the web and translates with no human in the loop.",
+    },
+  ];
   return (
-    <section id="langs" className="section">
-      <h2 className="section-title">{LANGUAGES.length}+ languages</h2>
-      <p className="section-sub">
-        Translate to and from any of these — add more by editing one array.
-      </p>
-      <div className="lang-grid">
-        {LANGUAGES.map((l) => (
-          <span key={l} className="lang-chip">
-            {l}
-          </span>
-        ))}
+    <section className="block alt">
+      <div className="container">
+        <SectionHead n="—" kicker="Why it's different" titleA="Not a wrapper." titleB="A contract that thinks." />
+        <div className="why-grid">
+          {cards.map((c) => (
+            <div key={c.t} className="why-card">
+              <div className="why-mark mono">◇</div>
+              <h4>{c.t}</h4>
+              <p>{c.d}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* FAQ                                                                 */
-/* ------------------------------------------------------------------ */
+/* ============================ Chain Reference ============================ */
+
+function ChainReference() {
+  const contracts = [
+    ["LLM precompile", "0x0000000000000000000000000000000000000802"],
+    ["HTTP precompile", "0x0000000000000000000000000000000000000801"],
+    ["Scheduler", "0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B"],
+    ["RitualWallet", "0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948"],
+    ["TEEServiceRegistry", "0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F"],
+  ];
+  return (
+    <section id="chain" className="block">
+      <div className="container">
+        <SectionHead n="—" kicker="Chain reference" titleA="Built on" titleB="Ritual" />
+        <div className="chain-grid">
+          <div className="chain-col">
+            <div className="chain-h mono">chain</div>
+            <KV k="Chain ID" v="1979" />
+            <KV k="Currency" v="RITUAL" />
+            <KV k="Block time" v="~350ms" />
+            <KV k="Model" v="GLM-4.7-FP8" />
+          </div>
+          <div className="chain-col">
+            <div className="chain-h mono">endpoints</div>
+            <KV k="RPC" v="rpc.ritualfoundation.org" />
+            <KV k="Explorer" v="explorer.ritualfoundation.org" />
+            <KV k="Faucet" v="faucet.ritualfoundation.org" />
+          </div>
+          <div className="chain-col wide">
+            <div className="chain-h mono">contracts &amp; precompiles</div>
+            {contracts.map(([k, v]) => (
+              <a
+                key={k}
+                className="kv link"
+                href={`${ritualChain.blockExplorers.default.url}/address/${v}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span className="kv-k">{k}</span>
+                <span className="kv-v mono">
+                  {v.slice(0, 10)}…{v.slice(-6)}
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function KV({ k, v }) {
+  return (
+    <div className="kv">
+      <span className="kv-k">{k}</span>
+      <span className="kv-v mono">{v}</span>
+    </div>
+  );
+}
+
+/* ============================ FAQ ============================ */
 
 function Faq() {
   const items = [
     {
       q: "Is the translation really on-chain?",
-      a: "Yes. The contract sends the prompt to the LLM precompile, decodes the completion, and stores the translated text in contract storage. The model itself runs off-chain inside a TEE, but the request, the result, and its verification all live on-chain.",
+      a: "Yes. The contract sends the prompt to the LLM precompile, decodes the completion, and stores the translated text on-chain. The model runs off-chain in a TEE, but the request, result, and verification all live on-chain.",
     },
     {
       q: "Do I need an API key or a server?",
-      a: "No. The LLM is enshrined as a chain precompile. Because the conversation-history field is empty, no storage provider or credentials are needed. The dApp is just a contract plus a static frontend.",
+      a: "No. The LLM is enshrined as a chain precompile. convoHistory is empty so no storage credentials are needed. The dApp is a contract plus a static frontend.",
     },
     {
       q: "What does it cost?",
-      a: "Each in-flight call escrows roughly 0.31 testnet RITUAL in the RitualWallet, refunded down to actual usage after settlement. Fund the contract with ~0.5 RIT to start. Get testnet RIT from the faucet.",
+      a: "Each in-flight call escrows ~0.31 testnet RITUAL in the RitualWallet, refunded to actual usage after settlement. Fund the contract with ~0.5 RIT. Get testnet RIT from the faucet.",
     },
     {
-      q: "Why does a translation take 10–40 seconds?",
-      a: "GLM-4.7-FP8 is a reasoning model. It produces an internal chain-of-thought before the final answer, which is why the output budget is set high and the TTL is 300 blocks.",
+      q: "Why 10–40 seconds?",
+      a: "GLM-4.7-FP8 is a reasoning model: it produces an internal chain-of-thought before the final answer, so the output budget is high and the TTL is 300 blocks.",
     },
     {
-      q: "Which wallet do I use?",
-      a: "Any EVM wallet (MetaMask works). The site adds and switches to Ritual Chain (id 1979) automatically when you connect.",
+      q: "How does the autonomous agent run with no server?",
+      a: "The enshrined Scheduler (a system contract invoked by the block proposer) wakes the contract on a schedule. The agent pays its own fees from the RitualWallet. To kill it you'd have to take the network down.",
     },
   ];
   const [open, setOpen] = useState(0);
   return (
-    <section id="faq" className="section alt">
-      <h2 className="section-title">FAQ</h2>
-      <div className="faq">
-        {items.map((it, i) => (
-          <div
-            key={i}
-            className={`faq-item ${open === i ? "open" : ""}`}
-            onClick={() => setOpen(open === i ? -1 : i)}
-          >
-            <div className="faq-q">
-              <span>{it.q}</span>
-              <span className="faq-mark">{open === i ? "−" : "+"}</span>
+    <section id="faq" className="block alt">
+      <div className="container">
+        <SectionHead n="—" kicker="FAQ" titleA="Good to" titleB="know" />
+        <div className="faq">
+          {items.map((it, i) => (
+            <div
+              key={i}
+              className={`faq-item ${open === i ? "open" : ""}`}
+              onClick={() => setOpen(open === i ? -1 : i)}
+            >
+              <div className="faq-q">
+                <span>{it.q}</span>
+                <span className="faq-mark mono">{open === i ? "−" : "+"}</span>
+              </div>
+              {open === i && <p className="faq-a">{it.a}</p>}
             </div>
-            {open === i && <p className="faq-a">{it.a}</p>}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Footer                                                              */
-/* ------------------------------------------------------------------ */
+/* ============================ Footer ============================ */
 
 function Footer() {
   return (
     <footer className="footer">
-      <div className="footer-inner">
-        <div className="brand">
-          <span className="brand-glyph">◇</span> Onchain Translator
-        </div>
-        <div className="footer-links">
+      <div className="container footer-inner">
+        <span className="brand">
+          <span className="brand-glyph">◇</span> onchain-translator
+        </span>
+        <div className="footer-links mono">
           <a href="https://faucet.ritualfoundation.org" target="_blank" rel="noreferrer">
-            Faucet
+            faucet
           </a>
           <a href="https://explorer.ritualfoundation.org" target="_blank" rel="noreferrer">
-            Explorer
+            explorer
           </a>
           <a href="https://docs.ritualfoundation.org" target="_blank" rel="noreferrer">
-            Ritual Docs
+            docs
+          </a>
+          <a href={GITHUB} target="_blank" rel="noreferrer">
+            github
           </a>
         </div>
-        <span className="muted">Built on Ritual Chain · id 1979</span>
+        <span className="footer-tag mono">built on ritual · chain 1979</span>
       </div>
     </footer>
+  );
+}
+
+/* ============================ shared ============================ */
+
+function SectionHead({ n, kicker, titleA, titleB }) {
+  return (
+    <div className="section-head">
+      <div className="section-counter mono">
+        {n} <span className="section-kicker">{kicker}</span>
+      </div>
+      <h2 className="display">
+        {titleA}
+        <br />
+        <span className="accent">{titleB}</span>
+      </h2>
+    </div>
   );
 }
