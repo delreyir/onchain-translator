@@ -19,6 +19,9 @@ export const ritualChain = defineChain({
 // --- System contracts ---
 export const TEE_SERVICE_REGISTRY =
   "0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F";
+// RitualWallet: prepaid fee escrow. Manual (EOA-initiated) precompile calls are
+// paid from the *caller's* balance here, so each user funds their own balance.
+export const RITUAL_WALLET = "0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948";
 export const CAPABILITY_LLM = 1;
 
 // --- Your deployed translator ---
@@ -165,6 +168,30 @@ export const teeRegistryAbi = [
         ],
       },
     ],
+  },
+];
+
+export const ritualWalletAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [{ name: "lockDuration", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "lockUntil",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
   },
 ];
 

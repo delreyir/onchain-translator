@@ -6,14 +6,17 @@ import {
   http,
   decodeEventLog,
   parseEther,
+  formatEther,
 } from "viem";
 import {
   ritualChain,
   TEE_SERVICE_REGISTRY,
+  RITUAL_WALLET,
   CAPABILITY_LLM,
   TRANSLATOR_ADDRESS,
   translatorAbi,
   teeRegistryAbi,
+  ritualWalletAbi,
   LANGUAGES,
 } from "./ritual.js";
 
@@ -172,10 +175,31 @@ function Translate({ account, setAccount, walletClient }) {
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [txHash, setTxHash] = useState("");
+  const [rwBalance, setRwBalance] = useState(null);
 
   const busy = ["selecting", "submitting", "inferring", "depositing"].includes(
     status
   );
+
+  async function refreshBalance() {
+    if (!account || !configured()) return;
+    try {
+      const bal = await publicClient.readContract({
+        address: RITUAL_WALLET,
+        abi: ritualWalletAbi,
+        functionName: "balanceOf",
+        args: [account],
+      });
+      setRwBalance(bal);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    refreshBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account]);
 
   async function fetchExecutor() {
     const services = await publicClient.readContract({
@@ -193,18 +217,21 @@ function Translate({ account, setAccount, walletClient }) {
     setError("");
     try {
       await ensureChain();
+      setStatus("depositing");
+      // Manual translate is paid from the *caller's* RitualWallet balance,
+      // so the connected user funds their own balance (not the contract).
       const hash = await walletClient.writeContract({
         account,
-        address: TRANSLATOR_ADDRESS,
-        abi: translatorAbi,
-        functionName: "depositForFees",
+        address: RITUAL_WALLET,
+        abi: ritualWalletAbi,
+        functionName: "deposit",
         args: [100000n],
         value: parseEther("0.5"),
       });
-      setStatus("depositing");
       await publicClient.waitForTransactionReceipt({ hash });
       setStatus("idle");
-      alert("Deposited 0.5 RITUAL into the contract's RitualWallet balance.");
+      await refreshBalance();
+      alert("Deposited 0.5 RITUAL into your fee balance. You can now translate on-chain.");
     } catch (e) {
       setError(e.shortMessage || e.message);
       setStatus("idle");
@@ -270,6 +297,7 @@ function Translate({ account, setAccount, walletClient }) {
       }
       setResult(translated);
       setStatus("done");
+      refreshBalance();
     } catch (e) {
       setError(e.shortMessage || e.message);
       setStatus("idle");
@@ -321,7 +349,7 @@ function Translate({ account, setAccount, walletClient }) {
               {account ? (
                 <>
                   <button className="btn outline" onClick={deposit} disabled={busy || !configured()}>
-                    Fund 0.5 RIT
+                    Fund my balance (0.5 RIT)
                   </button>
                   <button className="btn primary" onClick={translate} disabled={busy || !configured()}>
                     {busy ? "working…" : "Translate on-chain"}
@@ -333,6 +361,17 @@ function Translate({ account, setAccount, walletClient }) {
                 </button>
               )}
             </div>
+            {account && configured() && (
+              <div className="statusline mono">
+                fee balance:{" "}
+                {rwBalance == null
+                  ? "…"
+                  : `${Number(formatEther(rwBalance)).toFixed(3)} RIT`}
+                {rwBalance != null && rwBalance < parseEther("0.32") && (
+                  <span> · low — click “Fund my balance” first</span>
+                )}
+              </div>
+            )}
             {status !== "idle" && (
               <div className="statusline mono">
                 <span className="blink">▍</span> {statusText(status)}
@@ -713,7 +752,7 @@ function Faq() {
     },
     {
       q: "What does it cost?",
-      a: "Each in-flight call escrows ~0.31 testnet RITUAL in the RitualWallet, refunded to actual usage after settlement. Fund the contract with ~0.5 RIT. Get testnet RIT from the faucet.",
+      a: "Each in-flight call escrows ~0.31 testnet RITUAL from your RitualWallet balance, refunded to actual usage after settlement. Fund your own balance with ~0.5 RIT (the “Fund my balance” button). Get testnet RIT from the faucet.",
     },
     {
       q: "Why 10–40 seconds?",
