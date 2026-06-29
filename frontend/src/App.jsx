@@ -39,12 +39,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (window.ethereum) {
+    if (!window.ethereum) return;
+    // Auto-reconnect on load, unless the user explicitly disconnected.
+    if (localStorage.getItem("wallet:disconnected") !== "1") {
       window.ethereum
         .request({ method: "eth_accounts" })
         .then((accs) => accs[0] && setAccount(accs[0]))
         .catch(() => {});
     }
+    // Keep the UI in sync when the user switches or disconnects in the wallet.
+    const onAccountsChanged = (accs) => {
+      if (accs && accs.length) {
+        localStorage.removeItem("wallet:disconnected");
+        setAccount(accs[0]);
+      } else {
+        setAccount(null);
+      }
+    };
+    window.ethereum.on?.("accountsChanged", onAccountsChanged);
+    return () =>
+      window.ethereum.removeListener?.("accountsChanged", onAccountsChanged);
   }, []);
 
   return (
@@ -96,7 +110,22 @@ async function connectWallet(setAccount) {
   }
   const [acc] = await window.ethereum.request({ method: "eth_requestAccounts" });
   await ensureChain();
+  localStorage.removeItem("wallet:disconnected");
   setAccount(acc);
+}
+
+async function disconnectWallet(setAccount) {
+  try {
+    // Newer wallets support revoking the dApp's account permission.
+    await window.ethereum?.request?.({
+      method: "wallet_revokePermissions",
+      params: [{ eth_accounts: {} }],
+    });
+  } catch {
+    /* not all wallets support this — fall back to clearing local state */
+  }
+  localStorage.setItem("wallet:disconnected", "1");
+  setAccount(null);
 }
 
 const configured = () =>
@@ -121,8 +150,17 @@ function NavBar({ account, setAccount }) {
           </a>
         </div>
         {account ? (
-          <span className="mono pill">
-            {account.slice(0, 6)}…{account.slice(-4)}
+          <span style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+            <span className="mono pill">
+              {account.slice(0, 6)}…{account.slice(-4)}
+            </span>
+            <button
+              className="btn outline sm"
+              onClick={() => disconnectWallet(setAccount)}
+              title="Disconnect wallet"
+            >
+              Disconnect
+            </button>
           </span>
         ) : (
           <button className="btn outline sm" onClick={() => connectWallet(setAccount)}>
