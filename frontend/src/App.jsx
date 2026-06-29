@@ -27,67 +27,205 @@ const publicClient = createPublicClient({
 
 const GITHUB = "https://github.com/delreyir/onchain-translator";
 
-export default function App() {
-  const [account, setAccount] = useState(null);
-
-  const walletClient = useMemo(() => {
-    if (typeof window === "undefined" || !window.ethereum) return null;
-    return createWalletClient({
-      chain: ritualChain,
-      transport: custom(window.ethereum),
-    });
-  }, []);
-
+// EIP-6963: discover every injected wallet (MetaMask, OKX, Phantom, Rabby,
+// Coinbase, Brave, Trust…), not just window.ethereum.
+function useInjectedProviders() {
+  const [providers, setProviders] = useState([]);
   useEffect(() => {
-    if (!window.ethereum) return;
-    // Auto-reconnect on load, unless the user explicitly disconnected.
-    if (localStorage.getItem("wallet:disconnected") !== "1") {
-      window.ethereum
-        .request({ method: "eth_accounts" })
-        .then((accs) => accs[0] && setAccount(accs[0]))
-        .catch(() => {});
-    }
-    // Keep the UI in sync when the user switches or disconnects in the wallet.
-    const onAccountsChanged = (accs) => {
-      if (accs && accs.length) {
-        localStorage.removeItem("wallet:disconnected");
-        setAccount(accs[0]);
-      } else {
-        setAccount(null);
+    const byUuid = new Map();
+    const onAnnounce = (event) => {
+      const detail = event.detail;
+      if (detail?.info?.uuid && detail.provider) {
+        byUuid.set(detail.info.uuid, detail);
+        setProviders(Array.from(byUuid.values()));
       }
     };
-    window.ethereum.on?.("accountsChanged", onAccountsChanged);
-    return () =>
-      window.ethereum.removeListener?.("accountsChanged", onAccountsChanged);
+    window.addEventListener("eip6963:announceProvider", onAnnounce);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    // Fallback: legacy wallets that only inject window.ethereum without
+    // announcing via EIP-6963. Only used if nothing announced (avoids dupes).
+    const t = setTimeout(() => {
+      if (byUuid.size === 0 && window.ethereum) {
+        byUuid.set("injected", {
+          info: { uuid: "injected", name: "Injected Wallet", rdns: "injected" },
+          provider: window.ethereum,
+        });
+        setProviders(Array.from(byUuid.values()));
+      }
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("eip6963:announceProvider", onAnnounce);
+    };
   }, []);
+  return providers;
+}
+
+export default function App() {
+  const [account, setAccount] = useState(null);
+  const [provider, setProvider] = useState(null); // selected EIP-1193 provider
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const providers = useInjectedProviders();
+
+  const walletClient = useMemo(() => {
+    if (!provider) return null;
+    return createWalletClient({
+      chain: ritualChain,
+      transport: custom(provider),
+    });
+  }, [provider]);
+
+  async function connect(detail) {
+    try {
+      const accs = await detail.provider.request({
+        method: "eth_requestAccounts",
+      });
+      await ensureChain(detail.provider);
+      setProvider(detail.provider);
+      setAccount(accs[0]);
+      localStorage.setItem("wallet:rdns", detail.info.rdns || "");
+      localStorage.removeItem("wallet:disconnected");
+      setPickerOpen(false);
+    } catch (e) {
+      alert(e.shortMessage || e.message || "Failed to connect wallet");
+    }
+  }
+
+  function openPicker() {
+    if (!providers.length) {
+      alert(
+        "No EVM wallet detected. Install MetaMask, OKX, Phantom, Rabby, Coinbase Wallet, or another browser wallet, then reload."
+      );
+      return;
+    }
+    if (providers.length === 1) return connect(providers[0]);
+    setPickerOpen(true);
+  }
+
+  async function disconnect() {
+    try {
+      await provider?.request?.({
+        method: "wallet_revokePermissions",
+        params: [{ eth_accounts: {} }],
+      });
+    } catch {
+      /* not all wallets support this — clearing local state still works */
+    }
+    localStorage.setItem("wallet:disconnected", "1");
+    setProvider(null);
+    setAccount(null);
+  }
+
+  // Reconnect to the previously used wallet on load. No prompt: eth_accounts
+  // only returns accounts that already authorized this site.
+  useEffect(() => {
+    if (provider || !providers.length) return;
+    if (localStorage.getItem("wallet:disconnected") === "1") return;
+    const rdns = localStorage.getItem("wallet:rdns");
+    const match =
+      providers.find((p) => p.info.rdns === rdns) ||
+      (providers.length === 1 ? providers[0] : null);
+    if (!match) return;
+    match.provider
+      .request({ method: "eth_accounts" })
+      .then((accs) => {
+        if (accs && accs[0]) {
+          setProvider(match.provider);
+          setAccount(accs[0]);
+        }
+      })
+      .catch(() => {});
+  }, [providers, provider]);
+
+  // Keep the UI in sync with the selected wallet.
+  useEffect(() => {
+    if (!provider) return;
+    const onAccountsChanged = (accs) => {
+      if (accs && accs.length) setAccount(accs[0]);
+      else {
+        setAccount(null);
+        setProvider(null);
+      }
+    };
+    provider.on?.("accountsChanged", onAccountsChanged);
+    return () => provider.removeListener?.("accountsChanged", onAccountsChanged);
+  }, [provider]);
 
   return (
     <div className="page">
-      <NavBar account={account} setAccount={setAccount} />
+      <NavBar account={account} onConnect={openPicker} onDisconnect={disconnect} />
       <Hero />
-      <Translate account={account} setAccount={setAccount} walletClient={walletClient} />
+      <Translate
+        account={account}
+        onConnect={openPicker}
+        walletClient={walletClient}
+        provider={provider}
+      />
       <HowItWorks />
-      <AgentSection account={account} setAccount={setAccount} walletClient={walletClient} />
+      <AgentSection
+        account={account}
+        onConnect={openPicker}
+        walletClient={walletClient}
+        provider={provider}
+      />
       <Why />
       <ChainReference />
       <Faq />
       <Footer />
+      <WalletPicker
+        open={pickerOpen}
+        providers={providers}
+        onPick={connect}
+        onClose={() => setPickerOpen(false)}
+      />
+    </div>
+  );
+}
+
+function WalletPicker({ open, providers, onPick, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="wp-overlay" onClick={onClose}>
+      <div className="wp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="wp-head mono">
+          <span>connect a wallet</span>
+          <button className="wp-x" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div className="wp-list">
+          {providers.map((p) => (
+            <button
+              key={p.info.uuid}
+              className="wp-item"
+              onClick={() => onPick(p)}
+            >
+              {p.info.icon && <img src={p.info.icon} alt="" className="wp-icon" />}
+              <span>{p.info.name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="wp-note mono">
+          Any installed wallet appears here automatically (EIP-6963): MetaMask,
+          OKX, Phantom, Rabby, Coinbase, and more.
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ============================ wallet helpers ============================ */
 
-async function ensureChain() {
+async function ensureChain(provider) {
   const hexId = "0x" + ritualChain.id.toString(16);
   try {
-    await window.ethereum.request({
+    await provider.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: hexId }],
     });
   } catch (e) {
     if (e.code === 4902) {
-      await window.ethereum.request({
+      await provider.request({
         method: "wallet_addEthereumChain",
         params: [
           {
@@ -103,37 +241,12 @@ async function ensureChain() {
   }
 }
 
-async function connectWallet(setAccount) {
-  if (!window.ethereum) {
-    alert("No EVM wallet found. Install MetaMask.");
-    return;
-  }
-  const [acc] = await window.ethereum.request({ method: "eth_requestAccounts" });
-  await ensureChain();
-  localStorage.removeItem("wallet:disconnected");
-  setAccount(acc);
-}
-
-async function disconnectWallet(setAccount) {
-  try {
-    // Newer wallets support revoking the dApp's account permission.
-    await window.ethereum?.request?.({
-      method: "wallet_revokePermissions",
-      params: [{ eth_accounts: {} }],
-    });
-  } catch {
-    /* not all wallets support this — fall back to clearing local state */
-  }
-  localStorage.setItem("wallet:disconnected", "1");
-  setAccount(null);
-}
-
 const configured = () =>
   TRANSLATOR_ADDRESS && /^0x[a-fA-F0-9]{40}$/.test(TRANSLATOR_ADDRESS);
 
 /* ============================ NavBar ============================ */
 
-function NavBar({ account, setAccount }) {
+function NavBar({ account, onConnect, onDisconnect }) {
   return (
     <nav className="nav">
       <div className="nav-inner">
@@ -156,14 +269,14 @@ function NavBar({ account, setAccount }) {
             </span>
             <button
               className="btn outline sm"
-              onClick={() => disconnectWallet(setAccount)}
+              onClick={onDisconnect}
               title="Disconnect wallet"
             >
               Disconnect
             </button>
           </span>
         ) : (
-          <button className="btn outline sm" onClick={() => connectWallet(setAccount)}>
+          <button className="btn outline sm" onClick={onConnect}>
             Connect
           </button>
         )}
@@ -206,7 +319,7 @@ function Hero() {
 
 /* ============================ Translate (01) ============================ */
 
-function Translate({ account, setAccount, walletClient }) {
+function Translate({ account, onConnect, walletClient, provider }) {
   const [text, setText] = useState("");
   const [lang, setLang] = useState("Arabic");
   const [status, setStatus] = useState("idle");
@@ -254,7 +367,7 @@ function Translate({ account, setAccount, walletClient }) {
   async function deposit() {
     setError("");
     try {
-      await ensureChain();
+      await ensureChain(provider);
       setStatus("depositing");
       // Manual translate is paid from the *caller's* RitualWallet balance,
       // so the connected user funds their own balance (not the contract).
@@ -283,7 +396,7 @@ function Translate({ account, setAccount, walletClient }) {
     if (!account) return setError("Connect your wallet first.");
     if (!text.trim()) return setError("Enter some text to translate.");
     try {
-      await ensureChain();
+      await ensureChain(provider);
       setStatus("selecting");
       const executor = await fetchExecutor();
       setStatus("submitting");
@@ -394,7 +507,7 @@ function Translate({ account, setAccount, walletClient }) {
                   </button>
                 </>
               ) : (
-                <button className="btn primary" onClick={() => connectWallet(setAccount)}>
+                <button className="btn primary" onClick={onConnect}>
                   Connect wallet
                 </button>
               )}
@@ -502,7 +615,7 @@ function HowItWorks() {
 
 /* ============================ Agent (06) ============================ */
 
-function AgentSection({ account, setAccount, walletClient }) {
+function AgentSection({ account, onConnect, walletClient, provider }) {
   const [url, setUrl] = useState("https://api.adviceslip.com/advice");
   const [lang, setLang] = useState("Arabic");
   const [every, setEvery] = useState(40);
@@ -544,10 +657,10 @@ function AgentSection({ account, setAccount, walletClient }) {
 
   async function start() {
     setErr("");
-    if (!account) return connectWallet(setAccount);
+    if (!account) return onConnect();
     try {
       setBusy(true);
-      await ensureChain();
+      await ensureChain(provider);
       const hash = await walletClient.writeContract({
         account,
         address: TRANSLATOR_ADDRESS,
@@ -568,7 +681,7 @@ function AgentSection({ account, setAccount, walletClient }) {
     setErr("");
     try {
       setBusy(true);
-      await ensureChain();
+      await ensureChain(provider);
       const hash = await walletClient.writeContract({
         account,
         address: TRANSLATOR_ADDRESS,
