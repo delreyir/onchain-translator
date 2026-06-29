@@ -1,4 +1,4 @@
-// Deploys OnchainTranslator to Ritual Chain and (optionally) funds its
+// Deploys RitualTranslatorAgent to Ritual Chain and (optionally) funds its
 // RitualWallet balance so it can pay for LLM precompile calls.
 //
 // Usage:

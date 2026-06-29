@@ -50,7 +50,7 @@ User → translate(executor, text, lang)
 
 ```
 onchain-translator/
-├── contracts/OnchainTranslator.sol   # the on-chain translator
+├── contracts/RitualTranslatorAgent.sol  # the on-chain translator + agent
 ├── scripts/deploy.js                 # deploy + fund RitualWallet
 ├── hardhat.config.js                 # Ritual network (chainId 1979), viaIR
 └── frontend/                         # React + viem dApp
